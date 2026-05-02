@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional
 
 from litellm import completion
 
-from .router import FALLBACK_MODEL
+from .router import FALLBACK_MODEL, update_health
 
 
 def _extract_status_code(error: Exception) -> Optional[int]:
@@ -32,38 +32,38 @@ def call_with_fallback(prompt: str, model: str) -> Dict[str, Any]:
     try:
         result = _call_model(prompt, model)
         latency_ms = (time.perf_counter() - start) * 1000
+        update_health(model, latency_ms, error=False)
         return {
             "response": result["response"],
             "model_used": result["model_used"],
             "latency_ms": latency_ms,
             "success": True,
+            "fallback_used": False,
         }
     except Exception as error:  # noqa: BLE001 - surface external API failures
-        status_code = _extract_status_code(error)
-        if status_code in (429, 500):
-            try:
-                fallback_start = time.perf_counter()
-                result = _call_model(prompt, FALLBACK_MODEL)
-                latency_ms = (time.perf_counter() - fallback_start) * 1000
-                return {
-                    "response": result["response"],
-                    "model_used": result["model_used"],
-                    "latency_ms": latency_ms,
-                    "success": True,
-                }
-            except Exception as fallback_error:  # noqa: BLE001
-                latency_ms = (time.perf_counter() - start) * 1000
-                return {
-                    "response": str(fallback_error),
-                    "model_used": FALLBACK_MODEL,
-                    "latency_ms": latency_ms,
-                    "success": False,
-                }
-
         latency_ms = (time.perf_counter() - start) * 1000
-        return {
-            "response": str(error),
-            "model_used": model,
-            "latency_ms": latency_ms,
-            "success": False,
-        }
+        update_health(model, latency_ms, error=True)
+        print(f"[fallback] Model {model} failed, falling back...")
+
+        try:
+            fallback_start = time.perf_counter()
+            result = _call_model(prompt, FALLBACK_MODEL)
+            fallback_latency = (time.perf_counter() - fallback_start) * 1000
+            update_health(FALLBACK_MODEL, fallback_latency, error=False)
+            return {
+                "response": result["response"],
+                "model_used": result["model_used"],
+                "latency_ms": fallback_latency,
+                "success": True,
+                "fallback_used": True,
+            }
+        except Exception as fallback_error:  # noqa: BLE001
+            fallback_latency = (time.perf_counter() - start) * 1000
+            update_health(FALLBACK_MODEL, fallback_latency, error=True)
+            return {
+                "response": str(fallback_error),
+                "model_used": FALLBACK_MODEL,
+                "latency_ms": fallback_latency,
+                "success": False,
+                "fallback_used": True,
+            }

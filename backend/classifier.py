@@ -50,45 +50,38 @@ def _heuristic_label(prompt: str) -> Tuple[str, float]:
     if length > 300:
         return "COMPLEX", 0.9
 
-    label = "MODERATE"
-    confidence = 0.7
-
-    if length < 50 and not _contains_any(lower_prompt, _MODERATE_KEYWORDS | _COMPLEX_KEYWORDS):
-        label = "SIMPLE"
-        confidence = 0.6
-    elif length > 200:
-        label = "COMPLEX"
-        confidence = 0.8
+    if _contains_any(lower_prompt, _COMPLEX_KEYWORDS):
+        if length > 200:
+            return "COMPLEX", 0.9
+        return "COMPLEX", 0.7
 
     if _contains_any(lower_prompt, _MODERATE_KEYWORDS):
-        if label == "SIMPLE":
-            label = "MODERATE"
-            confidence = max(confidence, 0.7)
+        return "MODERATE", 0.8
 
-    if _contains_any(lower_prompt, _COMPLEX_KEYWORDS):
-        label = "COMPLEX"
-        confidence = max(confidence, 0.85)
-
-    return label, confidence
+    if length < 50:
+        return "SIMPLE", 0.6
+    if length > 200:
+        return "COMPLEX", 0.6
+    return "MODERATE", 0.6
 
 
-def classify(prompt: str) -> str:
+def classify(prompt: str) -> Tuple[str, float]:
     if not prompt:
         label = "SIMPLE"
         confidence = 0.5
         print(f"[classifier] label={label} confidence={confidence:.2f}")
-        return label
+        return label, confidence
 
     trimmed = prompt.strip().lower()
     if len(trimmed) < 20 and re.search(r"\d", trimmed) and re.search(r"[+\-*/]", trimmed):
         label = "SIMPLE"
-        confidence = 0.8
+        confidence = 1.0
         print(f"[classifier] label={label} confidence={confidence:.2f}")
-        return label
+        return label, confidence
 
     # Trigger a lightweight embedding call to ensure the model is loaded.
     _MODEL.encode([prompt], show_progress_bar=False)
 
     label, confidence = _heuristic_label(prompt)
     print(f"[classifier] label={label} confidence={confidence:.2f}")
-    return label
+    return label, confidence

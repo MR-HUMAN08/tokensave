@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 .DS_Store
 node_modules/
+frontend/.next/
 .venv/
 backend/omni_route.db
 *.db

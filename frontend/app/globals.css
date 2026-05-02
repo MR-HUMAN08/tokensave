@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #111111;
+  --border: #222222;
+  --accent-green: #00ff88;
+  --accent-blue: #0088ff;
+  --accent-orange: #ff6600;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-space-grotesk), sans-serif;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.7s ease-out both;
+}
+
+.animate-glow {
+  animation: glow-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(0, 255, 136, 0.15), 0 0 60px rgba(0, 136, 255, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 28px rgba(0, 255, 136, 0.35), 0 0 80px rgba(0, 136, 255, 0.2);
+  }
+}
