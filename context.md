@@ -13,3 +13,4 @@
 - 2026-05-02: Deleted backend/omni_route.db to reset telemetry; reran POST /route and GET /stats after reset.
 - 2026-05-02: Added short-math exception and refined MODERATE keyword phrases in classifier.
 - 2026-05-02: Updated MODERATE/COMPLEX routing to llama-3.3-70b-versatile and adjusted TOON encoding to reduce token counts.
+- 2026-05-02: Added API and SQLite DB to .gitignore and untracked API + backend/omni_route.db to fix push protection.
