@@ -3,11 +3,6 @@ from __future__ import annotations
 import re
 from typing import Iterable, Tuple
 
-from sentence_transformers import SentenceTransformer
-
-
-# Load once at import time so requests reuse the same model instance.
-_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
 
 _MODERATE_KEYWORDS = {
     "explain",
@@ -44,43 +39,54 @@ def _contains_any(text: str, phrases: Iterable[str]) -> bool:
 
 
 def _heuristic_label(prompt: str) -> Tuple[str, float]:
+    """
+    Lightweight keyword-based classification rules:
+    - Math pattern (digits + operators, <20 chars) → SIMPLE, 1.0
+    - COMPLEX keywords found → COMPLEX, 0.9 or 0.7
+    - MODERATE keywords found → MODERATE, 0.8
+    - Length >300 chars → COMPLEX, 0.6
+    - Length <50 chars → SIMPLE, 0.6
+    - Default → MODERATE, 0.6
+    """
     length = len(prompt)
     lower_prompt = prompt.lower()
 
-    if length > 300:
-        return "COMPLEX", 0.9
+    # Math pattern detection (high confidence simple)
+    trimmed = prompt.strip()
+    if len(trimmed) < 20 and re.search(r"\d", trimmed) and re.search(r"[+\-*/]", trimmed):
+        return "SIMPLE", 1.0
 
+    # COMPLEX keywords
     if _contains_any(lower_prompt, _COMPLEX_KEYWORDS):
         if length > 200:
             return "COMPLEX", 0.9
         return "COMPLEX", 0.7
 
+    # MODERATE keywords
     if _contains_any(lower_prompt, _MODERATE_KEYWORDS):
         return "MODERATE", 0.8
 
+    # Length-based heuristics
+    if length > 300:
+        return "COMPLEX", 0.6
     if length < 50:
         return "SIMPLE", 0.6
-    if length > 200:
-        return "COMPLEX", 0.6
+
+    # Default
     return "MODERATE", 0.6
 
 
 def classify(prompt: str) -> Tuple[str, float]:
+    """
+    Classify a prompt into SIMPLE, MODERATE, or COMPLEX.
+    Uses pure keyword matching and length heuristics.
+    No ML models required.
+    """
     if not prompt:
         label = "SIMPLE"
         confidence = 0.5
         print(f"[classifier] label={label} confidence={confidence:.2f}")
         return label, confidence
-
-    trimmed = prompt.strip().lower()
-    if len(trimmed) < 20 and re.search(r"\d", trimmed) and re.search(r"[+\-*/]", trimmed):
-        label = "SIMPLE"
-        confidence = 1.0
-        print(f"[classifier] label={label} confidence={confidence:.2f}")
-        return label, confidence
-
-    # Trigger a lightweight embedding call to ensure the model is loaded.
-    _MODEL.encode([prompt], show_progress_bar=False)
 
     label, confidence = _heuristic_label(prompt)
     print(f"[classifier] label={label} confidence={confidence:.2f}")
