@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "paisa"
+version = "0.1.0"
+description = "Intelligent LLM routing — classify locally, compress with TOON, route to the fastest free model"
+requires-python = ">=3.10"
+dependencies = [
+    "litellm",
+    "sentence-transformers",
+    "python-dotenv",
+    "torch",
+    "fastapi",
+    "uvicorn",
+]
+
+[project.scripts]
+paisa = "paisa.cli:main"

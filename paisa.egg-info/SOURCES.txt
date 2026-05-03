@@ -1,0 +1,16 @@
+README.md
+pyproject.toml
+setup.py
+paisa/__init__.py
+paisa/classifier.py
+paisa/cli.py
+paisa/fallback.py
+paisa/router.py
+paisa/telemetry.py
+paisa/toon_layer.py
+paisa.egg-info/PKG-INFO
+paisa.egg-info/SOURCES.txt
+paisa.egg-info/dependency_links.txt
+paisa.egg-info/entry_points.txt
+paisa.egg-info/requires.txt
+paisa.egg-info/top_level.txt

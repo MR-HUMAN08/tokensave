@@ -1,0 +1,2 @@
+[console_scripts]
+paisa = paisa.cli:main
