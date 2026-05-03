@@ -14,8 +14,8 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "OmniRoute AI",
-  description: "Intelligent LLM Routing Dashboard",
+  title: "Paisa",
+  description: "Smart LLM Routing That Saves You Money",
 };
 
 export default function RootLayout({

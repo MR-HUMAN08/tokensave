@@ -1,6 +1,0 @@
-litellm
-sentence-transformers
-python-dotenv
-torch
-fastapi
-uvicorn

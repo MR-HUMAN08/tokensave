@@ -1,7 +1,5 @@
-# OmniRoute AI
-Intelligent LLM routing middleware that classifies prompts locally, 
-compresses tokens with TOON encoding, and routes to the fastest 
-healthy free LLM provider in real time.
+# Paisa
+Smart LLM Routing That Saves You Money
 
 ## Stack
 - Backend: FastAPI + LiteLLM + sentence-transformers

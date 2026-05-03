@@ -166,13 +166,13 @@ export default function Home() {
         <header className="relative z-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-zinc-400">
-              OmniRoute
+              Paisa
             </p>
             <h1 className="text-4xl font-semibold text-white sm:text-5xl">
-              OmniRoute AI
+              Paisa
             </h1>
             <p className="mt-2 text-lg text-zinc-400">
-              Intelligent LLM Routing
+              Smart LLM Routing That Saves You Money
             </p>
           </div>
           <div className="flex items-center gap-3 rounded-full border border-[#222222] bg-[#111111] px-4 py-2 text-sm">
@@ -204,7 +204,7 @@ export default function Home() {
         <section className="relative z-10 mt-10 rounded-3xl border border-[#00ff88]/40 bg-[#0f0f0f] px-6 py-8 shadow-[0_0_40px_rgba(0,255,136,0.15)] animate-glow">
           <div className="grid gap-6 lg:grid-cols-[1fr_2fr_1fr]">
             <div className="rounded-2xl border border-[#222222] bg-[#111111] px-5 py-4">
-              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">OmniRoute</p>
+              <p className="text-xs uppercase tracking-[0.3em] text-zinc-500">Paisa</p>
               <p className="mt-4 text-3xl font-semibold text-white font-mono">
                 {toonTokens}
               </p>

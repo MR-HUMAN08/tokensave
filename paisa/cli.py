@@ -24,7 +24,7 @@ def _print_setup_message() -> None:
         "No API keys found. Create a .env file with:\n"
         "GROQ_API_KEY=your_key\n"
         "GOOGLE_API_KEY=your_key\n"
-        "Then run tokenwise again."
+        "Then run paisa again."
     )
 
 
