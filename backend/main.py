@@ -143,17 +143,21 @@ def route_prompt(payload: RouteRequest, request: Request) -> dict:
 
         result = call_with_fallback(prompt, model)
 
-        log_request(
-            prompt=prompt,
-            label=label,
-            model_used=result["model_used"],
-            latency_ms=result["latency_ms"],
-            toon_tokens=toon_tokens,
-            json_tokens=json_tokens,
-            confidence=confidence,
-            tier_blurred=tier_blurred,
-            fallback_used=result.get("fallback_used", False),
-        )
+        try:
+            log_request(
+                prompt=prompt,
+                label=label,
+                model_used=result["model_used"],
+                latency_ms=result["latency_ms"],
+                toon_tokens=toon_tokens,
+                json_tokens=json_tokens,
+                confidence=confidence,
+                tier_blurred=tier_blurred,
+                fallback_used=result.get("fallback_used", False),
+            )
+        except Exception as e:
+            # Telemetry failures must not break the API response in serverless environments
+            print(f"Telemetry error (non-fatal): {e}")
 
         return {
             "response": result["response"],

@@ -4,10 +4,17 @@ import os
 import sqlite3
 from typing import Dict, Iterable
 
+# Running on Vercel (serverless) provides no persistent writable filesystem.
+# Detect serverless environment and skip DB operations when present.
+IS_SERVERLESS = os.environ.get("VERCEL") == "1"
+
 _DB_PATH = os.path.join(os.path.dirname(__file__), "omni_route.db")
 
 
 def _init_db() -> None:
+    if IS_SERVERLESS:
+        # Skip DB initialization in serverless environments
+        return
     with sqlite3.connect(_DB_PATH) as connection:
         connection.execute(
             """
@@ -62,6 +69,8 @@ def log_request(
     tier_blurred: bool,
     fallback_used: bool,
 ) -> None:
+    if IS_SERVERLESS:
+        return
     with sqlite3.connect(_DB_PATH) as connection:
         connection.execute(
             """
@@ -93,6 +102,8 @@ def log_request(
 
 
 def get_stats() -> Dict[str, float]:
+    if IS_SERVERLESS:
+        return {"total_requests": 0, "note": "Stats not available in serverless mode"}
     with sqlite3.connect(_DB_PATH) as connection:
         cursor = connection.cursor()
         cursor.execute("SELECT COUNT(*), AVG(latency_ms) FROM logs")
@@ -125,6 +136,8 @@ def get_stats() -> Dict[str, float]:
 
 
 def get_recent_requests(limit: int = 10) -> list[Dict[str, object]]:
+    if IS_SERVERLESS:
+        return []
     with sqlite3.connect(_DB_PATH) as connection:
         connection.row_factory = sqlite3.Row
         cursor = connection.cursor()
