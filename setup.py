@@ -2,8 +2,8 @@ from setuptools import setup, find_packages
 
 setup(
     name="paisa",
-    version="0.1.0",
-    description="Intelligent LLM routing — classify locally, compress with TOON, route to the fastest free model",
+    version="0.1.1",
+    description="Paisa — smart LLM routing that saves you money",
     packages=find_packages(),
     install_requires=[
         "litellm",

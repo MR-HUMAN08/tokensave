@@ -1,7 +1,7 @@
 Metadata-Version: 2.4
 Name: paisa
-Version: 0.1.0
-Summary: Intelligent LLM routing — classify locally, compress with TOON, route to the fastest free model
+Version: 0.1.1
+Summary: Paisa — smart LLM routing that saves you money
 Requires-Python: >=3.10
 Requires-Dist: litellm
 Requires-Dist: sentence-transformers
