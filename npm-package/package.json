@@ -1,0 +1,18 @@
+{
+  "name": "paisa-cli",
+  "version": "0.1.2",
+  "description": "Smart LLM routing that saves you money — no API keys needed",
+  "main": "bin/paisa.js",
+  "bin": {
+    "paisa-cli": "bin/paisa.js"
+  },
+  "scripts": {
+    "test": "node bin/paisa.js 'What is 2+2?'"
+  },
+  "keywords": ["llm", "routing", "cli", "ai", "groq", "paisa"],
+  "author": "MR-HUMAN08",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
