@@ -1,27 +1,59 @@
 from __future__ import annotations
 
-from typing import Dict
+import os
+from typing import Dict, List
 
-SIMPLE_MODEL = "groq/llama-3.1-8b-instant"
-MODERATE_MODEL = "groq/llama-3.3-70b-versatile"
-COMPLEX_MODEL = "groq/llama-3.3-70b-versatile"
-FALLBACK_MODEL = "gemini/gemini-1.5-flash"
+FALLBACK_MODEL = "groq/llama-3.1-8b-instant"
 
-health_scores: Dict[str, Dict[str, float]] = {
-    SIMPLE_MODEL: {"latency_avg": 0.0, "error_rate": 0.0, "calls": 0.0},
-    MODERATE_MODEL: {"latency_avg": 0.0, "error_rate": 0.0, "calls": 0.0},
-    COMPLEX_MODEL: {"latency_avg": 0.0, "error_rate": 0.0, "calls": 0.0},
-    FALLBACK_MODEL: {"latency_avg": 0.0, "error_rate": 0.0, "calls": 0.0},
+PROVIDER_MODELS = {
+    "GROQ_API_KEY": {
+        "SIMPLE": "groq/llama-3.1-8b-instant",
+        "MODERATE": "groq/llama-3.3-70b-versatile",
+        "COMPLEX": "groq/llama-3.3-70b-versatile",
+    },
+    "ANTHROPIC_API_KEY": {
+        "SIMPLE": "claude-3-haiku-20240307",
+        "MODERATE": "claude-3-5-sonnet-20241022",
+        "COMPLEX": "claude-3-5-sonnet-20241022",
+    },
+    "OPENAI_API_KEY": {
+        "SIMPLE": "gpt-4o-mini",
+        "MODERATE": "gpt-4o",
+        "COMPLEX": "gpt-4o",
+    },
+    "GOOGLE_API_KEY": {
+        "SIMPLE": "gemini/gemini-2.0-flash",
+        "MODERATE": "gemini/gemini-2.0-flash",
+        "COMPLEX": "gemini/gemini-2.0-flash",
+    },
 }
+
+TIER_PRIORITY = {
+    "SIMPLE": ["GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"],
+    "MODERATE": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GOOGLE_API_KEY"],
+    "COMPLEX": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GOOGLE_API_KEY"],
+}
+
+health_scores: Dict[str, Dict[str, float]] = {}
+
+
+def _has_key(key_name: str) -> bool:
+    return bool(os.environ.get(key_name))
+
+
+def _build_candidates(label: str) -> List[str]:
+    candidates: List[str] = []
+    for key_name in TIER_PRIORITY.get(label, []):
+        if _has_key(key_name):
+            model = PROVIDER_MODELS[key_name][label]
+            candidates.append(model)
+    return candidates
 
 
 def get_model(label: str) -> str:
-    if label == "SIMPLE":
-        return SIMPLE_MODEL
-    if label == "MODERATE":
-        return MODERATE_MODEL
-    if label == "COMPLEX":
-        return COMPLEX_MODEL
+    candidates = _build_candidates(label)
+    if candidates:
+        return candidates[0]
     return FALLBACK_MODEL
 
 
@@ -45,19 +77,20 @@ def update_health(model: str, latency_ms: float, error: bool = False) -> Dict[st
 
 
 def get_best_model(label: str) -> str:
-    if label == "SIMPLE":
-        candidates = [SIMPLE_MODEL]
-    elif label == "MODERATE":
-        candidates = [MODERATE_MODEL]
-    elif label == "COMPLEX":
-        candidates = [COMPLEX_MODEL]
+    if label in {"SIMPLE", "MODERATE", "COMPLEX"}:
+        candidates = _build_candidates(label)
     else:
+        candidates = []
+
+    if not candidates:
         candidates = [FALLBACK_MODEL]
 
     best_model = candidates[0]
     best_score = float("inf")
     for model in candidates:
-        stats = health_scores.get(model, {"latency_avg": 0.0, "error_rate": 0.0, "calls": 0.0})
+        stats = health_scores.setdefault(
+            model, {"latency_avg": 0.0, "error_rate": 0.0, "calls": 0.0}
+        )
         calls = stats.get("calls", 0.0)
         if calls == 0:
             score = 0.0

@@ -1,6 +1,4 @@
 litellm
-sentence-transformers
 python-dotenv
-torch
-fastapi
-uvicorn
+platformdirs
+requests

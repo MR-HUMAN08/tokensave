@@ -2,16 +2,14 @@ from setuptools import setup, find_packages
 
 setup(
     name="paisa",
-    version="0.1.2",
+    version="0.1.3",
     description="Paisa — smart LLM routing that saves you money",
     packages=find_packages(),
     install_requires=[
         "litellm",
-        "sentence-transformers",
         "python-dotenv",
-        "torch",
-        "fastapi",
-        "uvicorn",
+        "platformdirs",
+        "requests",
     ],
     entry_points={
         "console_scripts": [

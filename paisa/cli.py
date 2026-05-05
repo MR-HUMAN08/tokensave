@@ -2,16 +2,34 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+from getpass import getpass
 from pathlib import Path
+from typing import Dict, List, Tuple
 
-import requests
+from platformdirs import user_config_dir
 
 from . import __version__
 from . import telemetry as telemetry_module
 
-# Paisa hosted API endpoint
-PAISA_API_URL = "https://paisa-api.vercel.app/route"
+
+KNOWN_KEYS = [
+    "GROQ_API_KEY",
+    "GOOGLE_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "HF_TOKEN",
+]
+
+PROVIDER_CHOICES: List[Tuple[str, str]] = [
+    ("1", "GROQ_API_KEY"),
+    ("2", "GOOGLE_API_KEY"),
+    ("3", "ANTHROPIC_API_KEY"),
+    ("4", "OPENAI_API_KEY"),
+    ("5", "HF_TOKEN"),
+    ("6", "Other"),
+]
 
 
 def _ensure_telemetry_db() -> None:
@@ -19,6 +37,148 @@ def _ensure_telemetry_db() -> None:
     data_dir.mkdir(parents=True, exist_ok=True)
     telemetry_module._DB_PATH = str(data_dir / "telemetry.db")
     telemetry_module._init_db()
+
+
+def _config_path() -> Path:
+    config_dir = Path(user_config_dir("paisa", "paisa"))
+    return config_dir / "keys.json"
+
+
+def _load_keys() -> Dict[str, str]:
+    path = _config_path()
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {k: str(v) for k, v in data.items() if str(v).strip()}
+
+
+def _save_keys(keys: Dict[str, str]) -> None:
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(keys, indent=2), encoding="utf-8")
+
+
+def _mask_key(value: str) -> str:
+    if len(value) <= 8:
+        return f"{value[:4]}...{value[-4:]}" if len(value) > 4 else value
+    return f"{value[:4]}...{value[-4:]}"
+
+
+def _print_welcome() -> None:
+    print("┌─────────────────────────────────────┐")
+    print("│  Welcome to Paisa!                  │")
+    print("└─────────────────────────────────────┘")
+    print("Smart LLM routing that saves you money.\n")
+    print("No API keys found. Let's set one up.\n")
+    print("Supported providers:")
+    print("  1. GROQ_API_KEY       (free at console.groq.com)")
+    print("  2. GOOGLE_API_KEY     (free at aistudio.google.com)")
+    print("  3. ANTHROPIC_API_KEY  (claude.ai/settings)")
+    print("  4. OPENAI_API_KEY     (platform.openai.com)")
+    print("  5. HF_TOKEN          (huggingface.co/settings/tokens)")
+    print("  6. Other             (any LiteLLM-compatible key)")
+
+
+def _resolve_provider(selection: str) -> str:
+    for number, name in PROVIDER_CHOICES:
+        if selection == number:
+            return name
+    return selection
+
+
+def _prompt_for_first_key() -> Dict[str, str]:
+    _print_welcome()
+
+    while True:
+        selection = input("Enter provider name (or number): ").strip()
+        if not selection:
+            print("Provider name is required.")
+            continue
+        provider = _resolve_provider(selection)
+        if provider == "Other":
+            provider = input("Enter provider name: ").strip()
+            if not provider:
+                print("Provider name is required.")
+                continue
+        key_value = getpass("Enter API key: ").strip()
+        if not key_value:
+            print("Key value cannot be empty.")
+            continue
+        keys = {provider: key_value}
+        _save_keys(keys)
+        path = _config_path()
+        print(f"Keys are stored locally in {path}")
+        print("They never leave your machine.")
+        return keys
+
+
+def _list_keys() -> None:
+    keys = _load_keys()
+    if not keys:
+        print("No keys stored.")
+        return
+    for name in sorted(keys.keys()):
+        print(f"{name}: {_mask_key(keys[name])}")
+
+
+def _add_key() -> None:
+    keys = _load_keys()
+    provider = input(
+        "Enter provider name (e.g. GROQ_API_KEY, ANTHROPIC_API_KEY): "
+    ).strip()
+    if not provider:
+        print("Provider name is required.")
+        return
+    key_value = getpass("Enter key value: ").strip()
+    if not key_value:
+        print("Key value cannot be empty.")
+        return
+    keys[provider] = key_value
+    _save_keys(keys)
+    print(f"Saved {provider}.")
+
+
+def _remove_key() -> None:
+    keys = _load_keys()
+    if not keys:
+        print("No keys stored.")
+        return
+    names = sorted(keys.keys())
+    for idx, name in enumerate(names, start=1):
+        print(f"{idx}. {name}")
+    selection = input("Which key to remove? (number): ").strip()
+    if not selection.isdigit():
+        print("Invalid selection.")
+        return
+    index = int(selection) - 1
+    if index < 0 or index >= len(names):
+        print("Invalid selection.")
+        return
+    removed = names[index]
+    keys.pop(removed, None)
+    _save_keys(keys)
+    print(f"Removed {removed}.")
+
+
+def _reset_keys() -> None:
+    path = _config_path()
+    if path.exists():
+        path.unlink()
+    print("All keys removed. Run paisa to set up again.")
+
+
+def _ensure_keys_loaded() -> Dict[str, str]:
+    keys = _load_keys()
+    if not keys:
+        keys = _prompt_for_first_key()
+    for key, value in keys.items():
+        os.environ[key] = value
+    return keys
 
 
 def _render_output(
@@ -53,6 +213,31 @@ def _render_output(
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "keys":
+        keys_parser = argparse.ArgumentParser(
+            prog="paisa keys",
+            description="Manage locally stored API keys",
+        )
+        group = keys_parser.add_mutually_exclusive_group(required=True)
+        group.add_argument("--list", action="store_true", help="List stored keys")
+        group.add_argument("--add", action="store_true", help="Add a new key")
+        group.add_argument("--remove", action="store_true", help="Remove a key")
+        group.add_argument("--reset", action="store_true", help="Remove all keys")
+        keys_args = keys_parser.parse_args(sys.argv[2:])
+
+        if keys_args.list:
+            _list_keys()
+            return
+        if keys_args.add:
+            _add_key()
+            return
+        if keys_args.remove:
+            _remove_key()
+            return
+        if keys_args.reset:
+            _reset_keys()
+            return
+
     parser = argparse.ArgumentParser(
         description="Paisa CLI - Smart LLM routing that saves you money"
     )
@@ -78,72 +263,75 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
+    _ensure_keys_loaded()
+
+    from .classifier import classify
+    from .fallback import call_with_fallback
+    from .router import get_best_model
+    from .toon_layer import count_tokens, to_toon
+
     try:
-        response = requests.post(
-            PAISA_API_URL,
-            json={"prompt": prompt},
-            timeout=30,
+        label, confidence = classify(prompt)
+        model_label = label
+        tier_blurred = False
+        if label == "COMPLEX" and confidence < 0.75:
+            model_label = "MODERATE"
+            tier_blurred = True
+        elif label == "MODERATE" and confidence < 0.65:
+            model_label = "SIMPLE"
+            tier_blurred = True
+
+        model = get_best_model(model_label)
+
+        toon_payload = to_toon({"prompt": prompt})
+        toon_tokens = count_tokens(toon_payload)
+        json_payload = json.dumps({"prompt": prompt})
+        json_tokens = count_tokens(json_payload)
+
+        result = call_with_fallback(prompt, model)
+
+        telemetry_module.log_request(
+            prompt=prompt,
+            label=label,
+            model_used=result["model_used"],
+            latency_ms=result["latency_ms"],
+            toon_tokens=toon_tokens,
+            json_tokens=json_tokens,
+            confidence=confidence,
+            tier_blurred=tier_blurred,
+            fallback_used=result.get("fallback_used", False),
         )
-        response.raise_for_status()
-        data = response.json()
-    except requests.exceptions.ConnectionError:
-        print("Error: Paisa server unreachable. Try again later.")
-        sys.exit(1)
-    except requests.exceptions.Timeout:
-        print("Error: Paisa server timeout. Try again later.")
-        sys.exit(1)
-    except requests.exceptions.HTTPError as e:
-        if response.status_code == 429:
-            error_detail = response.json().get("detail", {})
-            if isinstance(error_detail, dict) and "error" in error_detail:
-                print(f"Error: {error_detail['error']}")
-            else:
-                print("Error: Daily limit reached. Come back tomorrow.")
-        else:
-            error_detail = response.json().get("detail", {})
-            if isinstance(error_detail, dict) and "error" in error_detail:
-                print(f"Error: {error_detail['error']}")
-            else:
-                print(f"Error: {str(e)}")
-        sys.exit(1)
-    except (json.JSONDecodeError, KeyError) as e:
-        print(f"Error: Invalid server response - {str(e)}")
-        sys.exit(1)
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {e}")
         sys.exit(1)
 
     if args.json:
         output = {
             "prompt": prompt,
-            "label": data.get("label"),
-            "confidence": data.get("confidence"),
-            "model_used": data.get("model_used"),
-            "latency_ms": data.get("latency_ms"),
-            "toon_tokens": data.get("toon_tokens"),
-            "json_tokens": data.get("json_tokens"),
-            "tokens_saved_percent": (
-                (1 - (data.get("toon_tokens", 0) / data.get("json_tokens", 1))) * 100
-                if data.get("json_tokens")
-                else 0
-            ),
-            "tier_blurred": data.get("tier_blurred", False),
-            "fallback_used": data.get("fallback_used", False),
-            "response": data.get("response"),
+            "label": label,
+            "confidence": confidence,
+            "model_used": result["model_used"],
+            "latency_ms": result["latency_ms"],
+            "toon_tokens": toon_tokens,
+            "json_tokens": json_tokens,
+            "tokens_saved_percent": (1 - (toon_tokens / json_tokens)) * 100 if json_tokens else 0,
+            "tier_blurred": tier_blurred,
+            "fallback_used": result.get("fallback_used", False),
+            "response": result["response"],
         }
         print(json.dumps(output, indent=2))
         return
 
     _render_output(
         prompt=prompt,
-        label=data.get("label", "UNKNOWN"),
-        confidence=data.get("confidence", 0),
-        model_used=data.get("model_used", "unknown"),
-        latency_ms=data.get("latency_ms", 0),
-        toon_tokens=data.get("toon_tokens", 0),
-        json_tokens=data.get("json_tokens", 0),
-        tier_blurred=data.get("tier_blurred", False),
-        response=data.get("response", "No response"),
+        label=label,
+        confidence=confidence,
+        model_used=result["model_used"],
+        latency_ms=result["latency_ms"],
+        toon_tokens=toon_tokens,
+        json_tokens=json_tokens,
+        tier_blurred=tier_blurred,
+        response=result["response"],
     )
 
 
