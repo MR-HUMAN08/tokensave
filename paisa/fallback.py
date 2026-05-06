@@ -1,69 +1,54 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
-from litellm import completion
+import litellm
 
-from .router import FALLBACK_MODEL, update_health
-
-
-def _extract_status_code(error: Exception) -> Optional[int]:
-    for attr in ("status_code", "status", "http_status"):
-        value = getattr(error, attr, None)
-        if isinstance(value, int):
-            return value
-    return None
+from .router import PROVIDER_MODELS, get_available_providers, update_health
 
 
-def _call_model(prompt: str, model: str) -> Dict[str, Any]:
-    response = completion(
-        model=model,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    content = ""
-    if response and "choices" in response and response["choices"]:
-        content = response["choices"][0]["message"]["content"]
-    return {"response": content, "model_used": model}
+def call_with_fallback(prompt: str, model: str, keys: Dict[str, str] | None = None) -> Dict[str, Any]:
+    if keys is None:
+        from .cli import _load_keys
 
+        keys = _load_keys()
 
-def call_with_fallback(prompt: str, model: str) -> Dict[str, Any]:
-    start = time.perf_counter()
-    try:
-        result = _call_model(prompt, model)
-        latency_ms = (time.perf_counter() - start) * 1000
-        update_health(model, latency_ms, error=False)
-        return {
-            "response": result["response"],
-            "model_used": result["model_used"],
-            "latency_ms": latency_ms,
-            "success": True,
-            "fallback_used": False,
-        }
-    except Exception as error:  # noqa: BLE001 - surface external API failures
-        latency_ms = (time.perf_counter() - start) * 1000
-        update_health(model, latency_ms, error=True)
-        print(f"[fallback] Model {model} failed, falling back...")
+    available_providers = get_available_providers(keys)
 
+    fallback_models = []
+    for provider in available_providers:
+        candidate = PROVIDER_MODELS[provider].get("SIMPLE")
+        if candidate and candidate != model:
+            fallback_models.append(candidate)
+
+    models_to_try = [model] + fallback_models
+
+    for attempt_model in models_to_try:
+        start = time.time()
         try:
-            fallback_start = time.perf_counter()
-            result = _call_model(prompt, FALLBACK_MODEL)
-            fallback_latency = (time.perf_counter() - fallback_start) * 1000
-            update_health(FALLBACK_MODEL, fallback_latency, error=False)
+            response = litellm.completion(
+                model=attempt_model,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            latency_ms = (time.time() - start) * 1000
+            update_health(attempt_model, latency_ms, error=False)
             return {
-                "response": result["response"],
-                "model_used": result["model_used"],
-                "latency_ms": fallback_latency,
+                "response": response.choices[0].message.content,
+                "model_used": attempt_model,
+                "latency_ms": latency_ms,
                 "success": True,
-                "fallback_used": True,
+                "fallback_used": attempt_model != model,
             }
-        except Exception as fallback_error:  # noqa: BLE001
-            fallback_latency = (time.perf_counter() - start) * 1000
-            update_health(FALLBACK_MODEL, fallback_latency, error=True)
-            return {
-                "response": str(fallback_error),
-                "model_used": FALLBACK_MODEL,
-                "latency_ms": fallback_latency,
-                "success": False,
-                "fallback_used": True,
-            }
+        except Exception:
+            update_health(attempt_model, (time.time() - start) * 1000, error=True)
+            print(f"[fallback] Model {attempt_model} failed, trying next...")
+            continue
+
+    return {
+        "response": "All models failed. Check your API keys with: paisa keys --list",
+        "model_used": model,
+        "latency_ms": 0,
+        "success": False,
+        "fallback_used": False,
+    }

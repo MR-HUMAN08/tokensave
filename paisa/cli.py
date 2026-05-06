@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import sys
 from getpass import getpass
@@ -21,6 +22,10 @@ KNOWN_KEYS = [
     "OPENAI_API_KEY",
     "HF_TOKEN",
 ]
+
+logging.getLogger("LiteLLM").setLevel(logging.ERROR)
+logging.getLogger("litellm").setLevel(logging.ERROR)
+os.environ["LITELLM_LOG"] = "ERROR"
 
 PROVIDER_CHOICES: List[Tuple[str, str]] = [
     ("1", "GROQ_API_KEY"),
@@ -186,6 +191,7 @@ def _render_output(
     label: str,
     confidence: float,
     model_used: str,
+    provider_used: str,
     latency_ms: float,
     toon_tokens: int,
     json_tokens: int,
@@ -203,6 +209,7 @@ def _render_output(
     print(f"* Prompt    : {prompt}")
     print(f"* Label     : {label} (confidence: {confidence})")
     print(f"* Model     : {model_used}")
+    print(f"* Provider  : {provider_used}")
     print(f"* Latency   : {int(round(latency_ms))}ms")
     print(f"* Tokens    : TOON {toon_tokens} vs JSON {json_tokens} (saved {percent}%)")
     print(f"* Tier Blur : {'Yes' if tier_blurred else 'No'}")
@@ -263,7 +270,7 @@ def main() -> None:
         parser.print_help()
         sys.exit(1)
 
-    _ensure_keys_loaded()
+    keys = _ensure_keys_loaded()
 
     from .classifier import classify
     from .fallback import call_with_fallback
@@ -281,14 +288,14 @@ def main() -> None:
             model_label = "SIMPLE"
             tier_blurred = True
 
-        model = get_best_model(model_label)
+        model, provider = get_best_model(model_label, keys=keys)
 
         toon_payload = to_toon({"prompt": prompt})
         toon_tokens = count_tokens(toon_payload)
         json_payload = json.dumps({"prompt": prompt})
         json_tokens = count_tokens(json_payload)
 
-        result = call_with_fallback(prompt, model)
+        result = call_with_fallback(prompt, model, keys=keys)
 
         telemetry_module.log_request(
             prompt=prompt,
@@ -314,6 +321,7 @@ def main() -> None:
             "latency_ms": result["latency_ms"],
             "toon_tokens": toon_tokens,
             "json_tokens": json_tokens,
+            "provider_used": provider,
             "tokens_saved_percent": (1 - (toon_tokens / json_tokens)) * 100 if json_tokens else 0,
             "tier_blurred": tier_blurred,
             "fallback_used": result.get("fallback_used", False),
@@ -327,6 +335,7 @@ def main() -> None:
         label=label,
         confidence=confidence,
         model_used=result["model_used"],
+        provider_used=provider,
         latency_ms=result["latency_ms"],
         toon_tokens=toon_tokens,
         json_tokens=json_tokens,

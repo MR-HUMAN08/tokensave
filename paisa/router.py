@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-import os
-from typing import Dict, List
-
-FALLBACK_MODEL = "groq/llama-3.1-8b-instant"
+from typing import Dict, List, Tuple
 
 PROVIDER_MODELS = {
     "GROQ_API_KEY": {
         "SIMPLE": "groq/llama-3.1-8b-instant",
         "MODERATE": "groq/llama-3.3-70b-versatile",
         "COMPLEX": "groq/llama-3.3-70b-versatile",
+    },
+    "GOOGLE_API_KEY": {
+        "SIMPLE": "gemini/gemini-2.0-flash",
+        "MODERATE": "gemini/gemini-2.0-flash",
+        "COMPLEX": "gemini/gemini-2.0-flash",
     },
     "ANTHROPIC_API_KEY": {
         "SIMPLE": "claude-3-haiku-20240307",
@@ -21,40 +23,26 @@ PROVIDER_MODELS = {
         "MODERATE": "gpt-4o",
         "COMPLEX": "gpt-4o",
     },
-    "GOOGLE_API_KEY": {
-        "SIMPLE": "gemini/gemini-2.0-flash",
-        "MODERATE": "gemini/gemini-2.0-flash",
-        "COMPLEX": "gemini/gemini-2.0-flash",
+    "HF_TOKEN": {
+        "SIMPLE": "huggingface/mistralai/Mistral-7B-Instruct-v0.3",
+        "MODERATE": "huggingface/mistralai/Mistral-7B-Instruct-v0.3",
+        "COMPLEX": "huggingface/mistralai/Mistral-7B-Instruct-v0.3",
     },
 }
 
-TIER_PRIORITY = {
-    "SIMPLE": ["GROQ_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"],
-    "MODERATE": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GOOGLE_API_KEY"],
-    "COMPLEX": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "GOOGLE_API_KEY"],
-}
+PROVIDER_PRIORITY = [
+    "GROQ_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "GOOGLE_API_KEY",
+    "HF_TOKEN",
+]
 
 health_scores: Dict[str, Dict[str, float]] = {}
 
 
-def _has_key(key_name: str) -> bool:
-    return bool(os.environ.get(key_name))
-
-
-def _build_candidates(label: str) -> List[str]:
-    candidates: List[str] = []
-    for key_name in TIER_PRIORITY.get(label, []):
-        if _has_key(key_name):
-            model = PROVIDER_MODELS[key_name][label]
-            candidates.append(model)
-    return candidates
-
-
-def get_model(label: str) -> str:
-    candidates = _build_candidates(label)
-    if candidates:
-        return candidates[0]
-    return FALLBACK_MODEL
+def get_available_providers(keys: Dict[str, str]) -> List[str]:
+    return [p for p in PROVIDER_PRIORITY if p in keys and keys[p]]
 
 
 def update_health(model: str, latency_ms: float, error: bool = False) -> Dict[str, float]:
@@ -76,29 +64,24 @@ def update_health(model: str, latency_ms: float, error: bool = False) -> Dict[st
     return stats
 
 
-def get_best_model(label: str) -> str:
-    if label in {"SIMPLE", "MODERATE", "COMPLEX"}:
-        candidates = _build_candidates(label)
-    else:
-        candidates = []
+def get_best_model(label: str, keys: Dict[str, str] | None = None) -> Tuple[str, str]:
+    """
+    Returns (model_string, provider_key_name)
+    Only picks models for which user has a key.
+    """
+    if keys is None:
+        from .cli import _load_keys
 
-    if not candidates:
-        candidates = [FALLBACK_MODEL]
+        keys = _load_keys()
 
-    best_model = candidates[0]
-    best_score = float("inf")
-    for model in candidates:
-        stats = health_scores.setdefault(
-            model, {"latency_avg": 0.0, "error_rate": 0.0, "calls": 0.0}
-        )
-        calls = stats.get("calls", 0.0)
-        if calls == 0:
-            score = 0.0
-        else:
-            score = stats.get("latency_avg", 0.0) + stats.get("error_rate", 0.0) * 10000
+    available = get_available_providers(keys)
 
-        if score < best_score:
-            best_score = score
-            best_model = model
+    if not available:
+        raise ValueError("No API keys found. Run: paisa keys --add")
 
-    return best_model
+    for provider in available:
+        if provider in PROVIDER_MODELS:
+            model = PROVIDER_MODELS[provider][label]
+            return model, provider
+
+    raise ValueError("No suitable model found for available keys.")
