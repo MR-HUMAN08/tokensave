@@ -7,7 +7,7 @@ import os
 import sys
 from getpass import getpass
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, TypedDict
 
 from platformdirs import user_config_dir
 
@@ -23,9 +23,16 @@ KNOWN_KEYS = [
     "HF_TOKEN",
 ]
 
+
+class KeyEntry(TypedDict, total=False):
+    key: str
+    model: str | None
+
+os.environ["LITELLM_LOG"] = "ERROR"
+os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
 logging.getLogger("LiteLLM").setLevel(logging.ERROR)
 logging.getLogger("litellm").setLevel(logging.ERROR)
-os.environ["LITELLM_LOG"] = "ERROR"
+logging.getLogger("httpx").setLevel(logging.ERROR)
 
 PROVIDER_CHOICES: List[Tuple[str, str]] = [
     ("1", "GROQ_API_KEY"),
@@ -49,7 +56,7 @@ def _config_path() -> Path:
     return config_dir / "keys.json"
 
 
-def _load_keys() -> Dict[str, str]:
+def _load_keys() -> Dict[str, KeyEntry]:
     path = _config_path()
     if not path.exists():
         return {}
@@ -59,10 +66,33 @@ def _load_keys() -> Dict[str, str]:
         return {}
     if not isinstance(data, dict):
         return {}
-    return {k: str(v) for k, v in data.items() if str(v).strip()}
+    keys: Dict[str, KeyEntry] = {}
+    for name, value in data.items():
+        if isinstance(value, dict):
+            key_value = str(value.get("key", "")).strip()
+            model_value = value.get("model")
+            if key_value:
+                keys[name] = {
+                    "key": key_value,
+                    "model": model_value if model_value else None,
+                }
+        elif isinstance(value, str) and value.strip():
+            keys[name] = {"key": value.strip(), "model": None}
+
+    # Backfill default models for known providers when missing
+    try:
+        from .router import PROVIDER_MODELS
+
+        for provider in list(keys.keys()):
+            if provider in PROVIDER_MODELS and not keys[provider].get("model"):
+                keys[provider]["model"] = PROVIDER_MODELS[provider].get("SIMPLE")
+    except Exception:
+        pass
+
+    return keys
 
 
-def _save_keys(keys: Dict[str, str]) -> None:
+def _save_keys(keys: Dict[str, KeyEntry]) -> None:
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(keys, indent=2), encoding="utf-8")
@@ -96,7 +126,7 @@ def _resolve_provider(selection: str) -> str:
     return selection
 
 
-def _prompt_for_first_key() -> Dict[str, str]:
+def _prompt_for_first_key() -> Dict[str, KeyEntry]:
     _print_welcome()
 
     while True:
@@ -114,7 +144,12 @@ def _prompt_for_first_key() -> Dict[str, str]:
         if not key_value:
             print("Key value cannot be empty.")
             continue
-        keys = {provider: key_value}
+        model_name: str | None = None
+        if provider not in KNOWN_KEYS:
+            model_name = input(
+                "Enter model name for this provider (e.g. mistral/mistral-large, cohere/command): "
+            ).strip() or None
+        keys = {provider: {"key": key_value, "model": model_name}}
         _save_keys(keys)
         path = _config_path()
         print(f"Keys are stored locally in {path}")
@@ -128,7 +163,16 @@ def _list_keys() -> None:
         print("No keys stored.")
         return
     for name in sorted(keys.keys()):
-        print(f"{name}: {_mask_key(keys[name])}")
+        key_value = keys[name].get("key", "")
+        model_value = keys[name].get("model")
+        suffix = f" (model: {model_value})" if model_value else ""
+        print(f"{name}: {_mask_key(key_value)}{suffix}")
+    if len(keys) == 1:
+        provider_name = next(iter(keys.keys()))
+        display = provider_name.replace("_API_KEY", "").replace("_TOKEN", "")
+        print(f"Scenario 1: Single provider – using {display} only")
+    else:
+        print("Scenario 2: Multiple providers – dynamic routing based on complexity")
 
 
 def _add_key() -> None:
@@ -143,7 +187,12 @@ def _add_key() -> None:
     if not key_value:
         print("Key value cannot be empty.")
         return
-    keys[provider] = key_value
+    model_name: str | None = None
+    if provider not in KNOWN_KEYS:
+        model_name = input(
+            "Enter model name for this provider (e.g. mistral/mistral-large, cohere/command): "
+        ).strip() or None
+    keys[provider] = {"key": key_value, "model": model_name}
     _save_keys(keys)
     print(f"Saved {provider}.")
 
@@ -177,12 +226,14 @@ def _reset_keys() -> None:
     print("All keys removed. Run paisa to set up again.")
 
 
-def _ensure_keys_loaded() -> Dict[str, str]:
+def _ensure_keys_loaded() -> Dict[str, KeyEntry]:
     keys = _load_keys()
     if not keys:
         keys = _prompt_for_first_key()
-    for key, value in keys.items():
-        os.environ[key] = value
+    for key_name, entry in keys.items():
+        key_value = entry.get("key", "")
+        if key_value:
+            os.environ[key_name] = key_value
     return keys
 
 
@@ -274,21 +325,24 @@ def main() -> None:
 
     from .classifier import classify
     from .fallback import call_with_fallback
-    from .router import get_best_model
+    from .router import get_best_model, get_provider_for_model
     from .toon_layer import count_tokens, to_toon
 
     try:
         label, confidence = classify(prompt)
         model_label = label
         tier_blurred = False
-        if label == "COMPLEX" and confidence < 0.75:
+        if label == "COMPLEX" and confidence < 0.7:
             model_label = "MODERATE"
             tier_blurred = True
-        elif label == "MODERATE" and confidence < 0.65:
+        elif label == "MODERATE" and confidence < 0.7:
             model_label = "SIMPLE"
             tier_blurred = True
 
         model, provider = get_best_model(model_label, keys=keys)
+        print(
+            f"Classified as {model_label} (confidence {confidence:.2f}) – routing to {model} (token-optimised choice)"
+        )
 
         toon_payload = to_toon({"prompt": prompt})
         toon_tokens = count_tokens(toon_payload)
@@ -296,6 +350,11 @@ def main() -> None:
         json_tokens = count_tokens(json_payload)
 
         result = call_with_fallback(prompt, model, keys=keys)
+        provider_used = provider
+        if result.get("model_used") and result["model_used"] != model:
+            fallback_provider = get_provider_for_model(result["model_used"])
+            if fallback_provider:
+                provider_used = fallback_provider
 
         telemetry_module.log_request(
             prompt=prompt,
@@ -321,7 +380,7 @@ def main() -> None:
             "latency_ms": result["latency_ms"],
             "toon_tokens": toon_tokens,
             "json_tokens": json_tokens,
-            "provider_used": provider,
+            "provider_used": provider_used,
             "tokens_saved_percent": (1 - (toon_tokens / json_tokens)) * 100 if json_tokens else 0,
             "tier_blurred": tier_blurred,
             "fallback_used": result.get("fallback_used", False),
@@ -335,7 +394,7 @@ def main() -> None:
         label=label,
         confidence=confidence,
         model_used=result["model_used"],
-        provider_used=provider,
+        provider_used=provider_used,
         latency_ms=result["latency_ms"],
         toon_tokens=toon_tokens,
         json_tokens=json_tokens,

@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: paisa
-Version: 0.1.3
+Version: 0.1.6
 Summary: Paisa — smart LLM routing that saves you money
 Requires-Python: >=3.10
 Requires-Dist: litellm
