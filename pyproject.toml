@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "paisa"
-version = "0.1.7"
+version = "0.1.8"
 description = "Paisa — smart LLM routing that saves you money"
 requires-python = ">=3.10"
 dependencies = [

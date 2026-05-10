@@ -29,8 +29,8 @@ npm run dev
 
 To create a new release and trigger CI builds:
 
-	git tag v0.1.7
-	git push origin v0.1.7
+	git tag v0.1.8
+	git push origin v0.1.8
 
 This will automatically:
 1. Build Windows .exe, Mac binary, Linux binary
@@ -42,4 +42,19 @@ Setup steps:
 2. Add `PYPI_TOKEN` to repository secrets: `Settings` → `Secrets` → `Actions` → `New repository secret`
 	 - Name: `PYPI_TOKEN`
 	 - Value: your PyPI token (recommended: API token)
+
+## Windows Installation
+
+pip install paisa
+
+If you see an error about "uvloop" or "asyncio":
+pip install paisa --upgrade
+
+Usage is identical on Windows:
+paisa "What is 2+2?"
+paisa chat
+paisa keys --add
+
+Note: Run in Command Prompt or PowerShell.
+Windows Terminal (from Microsoft Store) recommended.
 

@@ -5,7 +5,6 @@ import json
 import logging
 import os
 import sys
-from getpass import getpass
 from pathlib import Path
 from typing import Dict, List, Tuple, TypedDict
 
@@ -13,6 +12,11 @@ from platformdirs import user_config_dir
 
 from . import __version__
 from . import telemetry as telemetry_module
+
+if sys.platform == "win32":
+    import asyncio
+
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 KNOWN_KEYS = [
@@ -45,7 +49,10 @@ PROVIDER_CHOICES: List[Tuple[str, str]] = [
 
 
 def _ensure_telemetry_db() -> None:
-    data_dir = Path.home() / ".paisa"
+    if sys.platform == "win32":
+        data_dir = Path(os.environ.get("APPDATA", Path.home())) / "paisa"
+    else:
+        data_dir = Path.home() / ".paisa"
     data_dir.mkdir(parents=True, exist_ok=True)
     telemetry_module._DB_PATH = str(data_dir / "telemetry.db")
     telemetry_module._init_db()
@@ -126,6 +133,18 @@ def _resolve_provider(selection: str) -> str:
     return selection
 
 
+def _get_secret_input(prompt: str) -> str:
+    """Cross-platform secret input."""
+    try:
+        from getpass import getpass
+
+        return getpass(prompt).strip()
+    except Exception:
+        # Fallback for terminals that don't support getpass.
+        print(prompt, end="", flush=True)
+        return input().strip()
+
+
 def _prompt_for_first_key() -> Dict[str, KeyEntry]:
     _print_welcome()
 
@@ -140,7 +159,7 @@ def _prompt_for_first_key() -> Dict[str, KeyEntry]:
             if not provider:
                 print("Provider name is required.")
                 continue
-        key_value = getpass("Enter API key: ").strip()
+        key_value = _get_secret_input("Enter API key: ")
         if not key_value:
             print("Key value cannot be empty.")
             continue
@@ -183,7 +202,7 @@ def _add_key() -> None:
     if not provider:
         print("Provider name is required.")
         return
-    key_value = getpass("Enter key value: ").strip()
+    key_value = _get_secret_input("Enter key value: ")
     if not key_value:
         print("Key value cannot be empty.")
         return

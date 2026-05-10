@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import os
+import sys
 import time
 from typing import Any, Dict, List
 
 import litellm
 
 from .router import PROVIDER_MODELS, get_available_providers, update_health
+
+if sys.platform == "win32":
+    import asyncio
+
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 PROVIDER_ENV_VAR = {
     "GROQ_API_KEY": "GROQ_API_KEY",
