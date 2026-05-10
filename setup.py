@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="paisa",
-    version="0.1.8",
+    version="0.1.9",
     description="Smart LLM routing that saves you money — works on Windows, Mac, and Linux",
     packages=find_packages(),
     install_requires=[
