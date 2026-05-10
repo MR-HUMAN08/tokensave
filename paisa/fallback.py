@@ -32,7 +32,12 @@ def _model_to_label(model: str) -> str | None:
     return None
 
 
-def call_with_fallback(prompt: str, original_model: str, keys: Dict[str, Dict[str, str | None]] | None = None) -> Dict[str, Any]:
+def call_with_fallback(
+    prompt: str,
+    original_model: str,
+    keys: Dict[str, Dict[str, str | None]] | None = None,
+    history: List[Dict[str, str]] | None = None,
+) -> Dict[str, Any]:
     if keys is None:
         from .cli import _load_keys
 
@@ -74,9 +79,15 @@ def call_with_fallback(prompt: str, original_model: str, keys: Dict[str, Dict[st
 
         start = time.time()
         try:
+            # Build messages with history for context
+            if history:
+                messages = history + [{"role": "user", "content": prompt}]
+            else:
+                messages = [{"role": "user", "content": prompt}]
+
             response = litellm.completion(
                 model=attempt_model,
-                messages=[{"role": "user", "content": prompt}],
+                messages=messages,
             )
             latency_ms = (time.time() - start) * 1000
             update_health(attempt_model, latency_ms, error=False)

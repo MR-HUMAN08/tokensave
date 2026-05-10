@@ -2,6 +2,7 @@ README.md
 pyproject.toml
 setup.py
 paisa/__init__.py
+paisa/chat.py
 paisa/classifier.py
 paisa/cli.py
 paisa/fallback.py

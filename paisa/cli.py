@@ -270,6 +270,106 @@ def _render_output(
     print("--------------------------------------")
 
 
+def run_chat(keys: Dict[str, KeyEntry]) -> None:
+    """Interactive chat mode with context sharing across model switches."""
+    from .chat import ConversationHistory
+    from .classifier import classify
+    from .fallback import call_with_fallback
+    from .router import get_best_model
+    from .toon_layer import count_tokens, to_toon
+
+    history = ConversationHistory()
+
+    print("┌─────────────────────────────────────┐")
+    print("│  Paisa Chat                         │")
+    print("└─────────────────────────────────────┘")
+    print("Context is shared across all model switches.")
+    print("Type 'exit' or 'quit' to end. 'history' to see log.\n")
+
+    while True:
+        try:
+            user_input = input("You: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\n\nChat ended.")
+            break
+
+        if not user_input:
+            continue
+
+        if user_input.lower() in ("exit", "quit"):
+            print(f"\nSession summary: {history.summary()}")
+            break
+
+        if user_input.lower() == "history":
+            for i, msg in enumerate(history.get_messages()):
+                role = "You" if msg["role"] == "user" else "Paisa"
+                content_preview = msg["content"][:100]
+                if len(msg["content"]) > 100:
+                    content_preview += "..."
+                print(f"{role}: {content_preview}")
+            continue
+
+        if user_input.lower() == "models":
+            print(
+                f"Models used: {', '.join(history.model_log) or 'none yet'}"
+            )
+            continue
+
+        # Classify and route
+        label, confidence = classify(user_input)
+
+        # Tier blurring based on confidence
+        model_label = label
+        tier_blurred = False
+        if label == "COMPLEX" and confidence < 0.75:
+            model_label = "MODERATE"
+            tier_blurred = True
+        elif label == "MODERATE" and confidence < 0.65:
+            model_label = "SIMPLE"
+            tier_blurred = True
+
+        try:
+            model, provider = get_best_model(model_label, keys=keys)
+        except ValueError as e:
+            print(f"Error: {e}")
+            break
+
+        # Show routing decision
+        prev_model = history.model_log[-1] if history.model_log else None
+        if prev_model and prev_model != model:
+            print(
+                f"  [switching from {prev_model} → {model} "
+                f"for {label} prompt]"
+            )
+        else:
+            print(f"  [{label} → {model}]")
+
+        # Call with full history for context
+        result = call_with_fallback(
+            prompt=user_input,
+            original_model=model,
+            keys=keys,
+            history=history.get_messages(),
+        )
+
+        # Add to history
+        history.add_user(user_input)
+        history.add_assistant(result["response"], result["model_used"])
+
+        # Print response
+        print(f"\nPaisa: {result['response']}")
+
+        # Show token savings
+        toon = to_toon({"prompt": user_input})
+        toon_t = count_tokens(toon)
+        json_t = count_tokens('{"prompt":"' + user_input + '"}')
+        saved_pct = round((1 - toon_t / json_t) * 100) if json_t > 0 else 0
+        print(
+            f"  [tokens saved: {saved_pct}% | "
+            f"latency: {int(result['latency_ms'])}ms]\n"
+        )
+
+
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "keys":
         keys_parser = argparse.ArgumentParser(
@@ -314,6 +414,11 @@ def main() -> None:
     if args.stats:
         stats = telemetry_module.get_stats()
         print(json.dumps(stats, indent=2))
+        return
+
+    if len(sys.argv) > 1 and sys.argv[1] == "chat":
+        keys = _ensure_keys_loaded()
+        run_chat(keys)
         return
 
     prompt = args.prompt
