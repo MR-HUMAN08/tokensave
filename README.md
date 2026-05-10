@@ -24,3 +24,15 @@ npm run dev
 - GET /recent-requests — last 10 requests
 - GET /health — health check
 - GET /health-scores — live provider health scores
+
+## How to Trigger a Release
+
+To create a new release:
+	git tag v0.1.7
+	git push origin v0.1.7
+
+This automatically:
+1. Builds Windows .exe, Mac binary, Linux binary
+2. Creates a GitHub Release with all 3 binaries attached
+3. Publishes to PyPI
+
